@@ -1,0 +1,505 @@
+---
+title: "HMDA Analysis"
+output: pdf_document
+date: "2024-02-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load Packages
+```{r}
+library(ggplot2)
+library(dplyr)
+library(rvest)
+```
+## I) Literature Review
+
+# This article gives a good intro to what makes a person more likely to be approved for a mortgage: https://themortgagereports.com/47861/what-are-your-chances-of-mortgage-approval-down-payment-credit-score
+
+# Summary of this article - the 3 factors which make a person more likely to be approved for a mortgage are - a) income and debts, b) credit score, and c) assets. When a person is strong in all 3 of these categories, then they are more likely to be approved for a mortgage. In our data set, we don't have information on credit score and assets, but we know the applicant's income. Stable job is anonther important factor (we have data for unemployment rate). It also says that FHA and VA (Veteran) loans are much more leniant on credit scores (this is under the variable, loan_type_name, in our data set) so this signifies the relevance of having loan_type_name as a control in our model. 
+
+# To our original data set (https://www.consumerfinance.gov/data-research/hmda/), we have added the following new variables - 
+# a) unemployment rate - https://www.bls.gov/web/laus/laumstrk.htm
+# b) CPI-U - https://www.usinflationcalculator.com/inflation/consumer-price-index-and-annual-percent-changes-from-1913-to-2008/#google_vignette
+# c) Per Capita Real GDP - https://apps.bea.gov/regional/histdata/releases/0615gsp/index.cfm
+
+# We got the HMDA data set which basically is a regulation requiring financial institutions to report their mortage applicant's characteristics such as demographic characteristics (race, gender, state of application) and economic indicators (applicant income, loan amount obtained and so on) to ensure that financial instituions don't indulge in discrimantory practices when issuing mortgages. This is in allignment with the Fair Housing Act (1968) (read this article - https://www.hud.gov/program_offices/fair_housing_equal_opp/fair_lending#:~:text=The%20Fair%20Housing%20Act%20makes,Approvals%20and%20denials) which makes it illegal to discriminate against someone because of race, color, religion, sex (including gender, gender identity, sexual orientation, and sexual harassment), familial status, national origin or disability at any stage of the mortgage process, including Approvals and denials, terms like interest rates, points, fees and other costs, advertising, mortgage broker services, property appraisal, servicing, home loan modification assistance, and homeowners insurance. In our questions, we are basically focusing on the race and gender aspect of the applicants to see if any discriminattion still happens despite these regulations. Our pursuit of this question is shaped by the following literature review - 
+
+# 1) Bias in the mortgage approval process (https://www.investopedia.com/bias-in-the-mortgage-approval-process-5181654) - Historically, homeownership has been influenced race, ethnicity, and other prejudices. Here, you can give an example of red lining used to be a discrimatory practice in homeowenership in the US. This has been a major problem since for many families, their home is the single biggest asset and represents a significant portion of their total wealth - this particularly applies for non-white homeowners. Given the importance ofb housing as means of survival along with being a major asset, it is also important to recogonize that most homeowners can't afford to purchase a home outright, implying the significance of the mortgage/lending industry, which is seen substantial growth over the past. Nonetheless, despite regulations such as the Fair Hosuing ACt of 1968, there continues to be discrimination in this sector of mortgage approvals. In fact, a comprehensiver review of the evidence published by the urabn institute in 1999 found that minority homeowners faced discrimination. You can read more about the report here and summarize its results if possible (chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://www.urban.org/sites/default/files/publication/60776/410821-Discrimination-in-Metropolitan-Housing-Markets.PDF). In fact, over 74.5% of homeowners in 2nd quarter of 2022 were non-hispnaic white americans as compared to 45.3% Black americans and 57.3% of all other races such as (Asians, Native Hawaiians, and so on). Note that asians also are associated with lesser homeownership - we can also explore the racial gap in mortgage approval for asians and white applicants. Given these facts, we are interested in focusing on the race aspect of discriminatory practices.
+
+# 2) Gender Discrimination in US Mortgage Lending: A Temporal and Spatial Analysis (chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://repository.library.georgetown.edu/bitstream/handle/10822/1052744/Honors%20%28Final%29%20-%20Fatma%20Marafi.pdf?sequence=1&isAllowed=y) - This research paper talks about our reasoning behind focusing not only race but also the gender aspect of lending practices. It shows that women face a higher denial rate even after several regulations - you can raed more about this. Along with this two very important findings of this paper are discrimination is 1) pro-cyclical (i.e. peaks in recessions) and that  2) it varies substantially across states.  Specifically, gender discrimination in lending is higher in states with (i) high level of conservatism, (ii) low support for gay rights, and (iii) low female representation in the state legislature. These 2 findings (1 and 2) provide support for why we are interested in the period aspect of this study (recession vs recovery) and moreover, it leads us into our other question where we see if black applicants have a higher approval rate in California than Virginia in recession and recovery periods since California is generally considered to be the more liberal state than VA. 
+
+# 3) Racial Segregation and the American Foreclosure Crisis (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4193596/#:~:text=Compared%20to%20whites%20with%20similar,et%20al%202005%2C%202007).) - this research paper gives a very important finding during that during housing bubble, before the great recessioin (2007 - 2009) which saw a rise in subprime mortgages, African American and Latino homeowners bore a disproportionate share of costs stemming from the housing bubble. Compared to whites with similar credit profiles, down payment ratios, personal characteristics, and residential locations, African Americans were much more likely to receive subprime loans. This means that even though this increases the likelihood for black applicants to be approved for a mortgage in the bubble period, they become vulnerable to the several disadvantages associated subprime loans which are the ffollowing - 
+
+#i)Subprime mortgages are considered bad because they are loans offered to individuals with poor credit histories or other risk factors that make them more likely to default on their mortgage payments. These loans typically come with higher interest rates and fees compared to prime mortgages, which are offered to borrowers with strong credit profiles.
+
+#ii)The disproportionate impact of subprime lending on African American and Latino homeowners during the housing bubble can be attributed to several factors:
+
+#iii)Predatory Lending Practices: Subprime lenders often engage in predatory lending practices, such as targeting minority communities with deceptive marketing tactics, steering borrowers into loans they cannot afford, and charging excessive fees and interest rates.
+
+#iv)Systemic Discrimination: Discriminatory lending practices have historically disadvantaged minority communities. Even when African American and Latino borrowers have similar credit profiles and financial characteristics as their white counterparts, they may still be steered towards subprime loans due to systemic biases and institutional racism within the lending industry.
+
+#v)Limited Access to Traditional Credit: Many African American and Latino households have limited access to traditional banking services and may be more reliant on subprime lenders for financing. This limited access to mainstream financial institutions can leave them vulnerable to predatory lending practices.
+
+#vi)Community Disinvestment: Historically, minority communities have faced disinvestment and neglect from financial institutions and policymakers, resulting in lower property values and fewer opportunities for wealth accumulation. Subprime lending can exacerbate these disparities by further exploiting the financial vulnerability of these communities.
+
+#vii)Overall, the disproportionate impact of subprime lending on African American and Latino homeowners reflects broader systemic inequalities within the housing and financial sectors. Subprime mortgages are considered bad because they often exploit vulnerable borrowers, contribute to financial instability, and perpetuate cycles of poverty and inequality.
+
+# To conclude the suprime mortgages make the black applicants more likely to be approved for a mortgage but increase their vulnerability to default on the loan. (In fact our result is in allignment with this since we find that the racial gap between white and balck female applicants is lesser during recession than recovery but this may be a direct consequence of easy accessibilty to subprime mortgages which isn't neccessarily good).
+
+
+# Data Prep - data cleaning of the original random sample of 50,000 observations and adding new variables for CPI-U, Unemployment Rate, and 
+# Per Capita Real GDP
+```{r}
+# Load in HMDA Data
+setwd("/Users/herminiocervantes/Documents/Spring 24/STAT 4996 Capstone")
+HMDA<-read.csv("final_data_HMDA.csv")
+
+# Converting to factor variables
+HMDA$state_abbr <- factor(HMDA$state_abbr)
+HMDA$agency_abbr <- factor(HMDA$agency_abbr)
+HMDA$loan_type_name <- factor(HMDA$loan_type_name)
+HMDA$property_type_name <- factor(HMDA$property_type_name)
+HMDA$loan_purpose_name <- factor(HMDA$loan_purpose_name)
+HMDA$preapproval_name <- factor(HMDA$preapproval_name)
+HMDA$action_taken_name <- factor(HMDA$action_taken_name)
+HMDA$applicant_race_name_1 <- factor(HMDA$applicant_race_name_1)
+HMDA$applicant_sex_name <- factor(HMDA$applicant_sex_name)
+
+# Reducing applicant_race_name_1 to only 2 levels - "White", "Black", "Asian"
+HMDA <- mutate(HMDA,
+              app_race = case_when(
+                applicant_race_name_1 %in% c("Asian") ~ "Asian",
+                applicant_race_name_1 %in% c("Black or African American") ~ "Black",
+                applicant_race_name_1 %in% c("White") ~ "White",
+                TRUE ~ NA_character_
+              )
+)
+
+# Converting app_race to a factor variable
+HMDA$app_race <- factor(HMDA$app_race)
+
+
+# Reducing applicant_sex_name to Male and Female
+HMDA$applicant_sex_name <- factor(
+  HMDA$applicant_sex_name,
+  levels = c("Male", "Female")
+)
+
+# Converting applicant_sex_name to a factor variable
+HMDA$applicant_sex_name <- factor(HMDA$applicant_sex_name)
+
+
+# Create unemployment rates column
+unemployment_rates <- data.frame(
+  state_abbr = c(rep('VA', 6), rep('CA', 6)),
+  as_of_year = rep(2007:2012, 2),
+  unemployment_rate = c(3.0, 3.9, 6.7, 6.9, 6.4, 5.9, 5.4, 7.2, 11.3, 12.4, 11.8, 10.4)
+)
+
+# Join the unemployment rates with the HMDA data
+HMDA <- merge(HMDA, unemployment_rates, by = c("state_abbr", "as_of_year"), all.x = TRUE)
+
+# Adding a column for per capita real GDP for VA and CA (state-level)
+HMDA <- HMDA %>%
+  mutate(
+    Per_Cap_GDP = case_when(
+      state_abbr == "VA" & as_of_year == 2007 ~ 52676,
+      state_abbr == "VA" & as_of_year == 2008 ~ 52140,
+      state_abbr == "VA" & as_of_year == 2009 ~ 51772,
+      state_abbr == "VA" & as_of_year == 2010 ~ 52370,
+      state_abbr == "VA" & as_of_year == 2011 ~ 52145,
+      state_abbr == "VA" & as_of_year == 2012 ~ 51967,
+      state_abbr == "CA" & as_of_year == 2007 ~ 55011,
+      state_abbr == "CA" & as_of_year == 2008 ~ 54733,
+      state_abbr == "CA" & as_of_year == 2009 ~ 51830,
+      state_abbr == "CA" & as_of_year == 2010 ~ 51878,
+      state_abbr == "CA" & as_of_year == 2011 ~ 52037,
+      state_abbr == "CA" & as_of_year == 2012 ~ 52851,
+      TRUE ~ NA_integer_  # for any other cases
+    )
+  )
+
+# Adding a column for average annual CPI-U (National level)
+HMDA <- HMDA %>%
+  mutate(
+    CPI = case_when(
+      as_of_year == 2007 ~ 207.3,
+      as_of_year == 2008 ~ 215.3,
+      as_of_year == 2009 ~ 214.5,
+      as_of_year == 2010 ~ 218,
+      as_of_year == 2011 ~ 225,
+      as_of_year == 2012 ~ 230,
+      TRUE ~ NA_integer_ 
+    )
+  )
+
+# Removing unwanted columns
+HMDA <- select(HMDA, -agency_abbr, -owner_occupancy_name, -preapproval_name, 
+               -co_applicant_race_name_1, -co_applicant_sex_name, -purchaser_type_name, 
+               -hud_median_family_income, -hoepa_status_name, -census_tract_number, -applicant_ethnicity_name,
+               -co_applicant_ethnicity_name)
+
+# Renaming the level of "One-to-four family dwelling" to "Traditional housing" in the variable, property_type_name
+levels(HMDA$property_type_name)[levels(HMDA$property_type_name) == "One-to-four family dwelling (other than manufactured housing)"] <- "Traditional housing"
+
+# Removing na values
+HMDA <- na.omit(HMDA)
+```
+
+
+## Subsetting our data for females and recovery
+```{r}
+# Step 1: Filter the data for female applicants and the Recovery period
+HMDA_female_Recovery <- HMDA %>%
+ filter(period == "Recovery" & applicant_sex_name == "Female")
+```
+
+## EDA for the subsetted data (female applicants and recovery period) - Note: also refer to EDA for our random sample of 50,000 observations we did before (it's on the drive under the EDA folders)
+```{r}
+#EDA - for female applicants and the Recovery period
+#1) summary table
+summary(HMDA_female_Recovery)
+# action_taken_name is a balanced data set with #Loan denied = 2,121 and #Loan originated = 2,812
+
+# exploring the relation for interactions that I have added
+
+#i) interaction between applicant_income_000s and property_type_name
+ggplot(HMDA_female_Recovery, aes(x = property_type_name, y = applicant_income_000s, fill = action_taken_name)) +
+  geom_violin(scale = "width", trim = FALSE) +
+  labs(title = "Violin Plot of Applicant Income by Property Type and Action Taken",
+       x = "Property Type",
+       y = "Applicant Income",
+       fill = "Action Taken") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Loan originated" = "blue", "Loan denied" = "red"))
+
+##ii) interaction between applicant_income_000s and state_abbr
+ggplot(HMDA_female_Recovery, aes(x = state_abbr, y = applicant_income_000s, fill = action_taken_name)) +
+  geom_violin(scale = "width", trim = FALSE) +
+  labs(title = "Violin Plot of Applicant Income by State and Action Taken",
+       x = "Property Type",
+       y = "Applicant Income",
+       fill = "Action Taken") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Loan originated" = "blue", "Loan denied" = "red"))
+
+##iii) interaction between applicant_income_000s and loan_purpose_name
+ggplot(HMDA_female_Recovery, aes(x = loan_purpose_name, y = applicant_income_000s, fill = action_taken_name)) +
+  geom_violin(scale = "width", trim = FALSE) +
+  labs(title = "Violin Plot of Applicant Income by Loan Purpose and Action Taken",
+       x = "Property Type",
+       y = "Applicant Income",
+       fill = "Action Taken") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Loan originated" = "blue", "Loan denied" = "red"))
+
+##iv) interaction between per capita GDP and CPI
+ggplot(HMDA_female_Recovery, aes(x = Per_Cap_GDP, y = CPI, color = action_taken_name)) +
+  geom_smooth(method = "lm") +
+  labs(title = "Scatter Plot of Per Capita GDP vs. CPI",
+       x = "Per Capita GDP",
+       y = "CPI",
+       color = "Action Taken") +
+  theme_minimal()
+
+#4) exploring the relations between categorical variables
+# 1) state_abbr and action_taken_name
+table_result1 <- table(HMDA_female_Recovery$state_abbr, HMDA_female_Recovery$action_taken_name)
+print(table_result1)
+
+# 2) loan_type_name and action_taken_name
+table_result2 <- table(HMDA_female_Recovery$loan_type_name, HMDA_female_Recovery$action_taken_name)
+print(table_result2)
+
+# 3) property_type_name and action_taken_name
+table_result3 <- table(HMDA_female_Recovery$property_type_name, HMDA_female_Recovery$action_taken_name)
+print(table_result3)
+
+# 4) loan_purpose_name and action_taken_name
+table_result4 <- table(HMDA_female_Recovery$loan_purpose_name, HMDA_female_Recovery$action_taken_name)
+print(table_result4)
+
+# 5) app_race and action_taken_name
+table_result5 <- table(HMDA_female_Recovery$app_race, HMDA_female_Recovery$action_taken_name)
+print(table_result5)
+
+## You can summarize the above tables into 1 comprehensive table
+```
+
+
+```{r}
+# Step 3: Logistic Regression
+
+# Having Black as the reference class
+HMDA_female_Recovery$app_race <- relevel(HMDA_female_Recovery$app_race, ref = "Black")
+
+# Fit a logistic regression model with "action_taken_name" as the response variable
+model <- glm(action_taken_name ~ state_abbr + loan_type_name + property_type_name +
+             loan_purpose_name + applicant_income_000s + app_race + CPI + unemployment_rate + Per_Cap_GDP  + applicant_income_000s*property_type_name + applicant_income_000s*state_abbr + applicant_income_000s * loan_purpose_name + Per_Cap_GDP * CPI, data = HMDA_female_Recovery, family = binomial)
+
+# Step 4: Hypothesis Testing
+# Get a summary of the model to check p-values
+summary(model)
+```
+
+# Evaluating Logistic Regression for HMDA_female_Recovery
+```{r}
+##set seed so results are reproducible
+set.seed(4996)
+
+##evenly split data into train and test sets
+sample.data<-sample.int(nrow(HMDA_female_Recovery), floor(.50*nrow(HMDA_female_Recovery)), replace = F)
+train<-HMDA_female_Recovery[sample.data, ]
+test<-HMDA_female_Recovery[-sample.data, ]
+
+##fit logistic regression using training data
+model <- glm(action_taken_name ~ state_abbr + loan_type_name + property_type_name +
+             loan_purpose_name + applicant_income_000s + app_race + CPI + unemployment_rate + Per_Cap_GDP  + applicant_income_000s*property_type_name + applicant_income_000s*state_abbr + applicant_income_000s * loan_purpose_name + Per_Cap_GDP * CPI, data = train, family = binomial)
+
+summary(model)
+
+##predicted probabilities for test data based on training data
+preds<-predict(model,newdata=test, type="response")
+
+##confusion matrix when threshold is 0.5. True values in the rows. 
+table(test$action_taken_name,preds > 0.5)
+
+##confusion matrix when threshold is 0.6. True values in the rows. 
+table(test$action_taken_name,preds > 0.6)
+
+##confusion matrix when threshold is 0.7. True values in the rows. 
+table(test$action_taken_name,preds > 0.55)
+
+
+##see the predicted probabilities for the test data and their classification based on threshold of 0.5
+display<-test[,c(1,3,4,5,7,10,12,13,14,15)]
+display<-cbind(display,preds,preds>0.55)
+names(display)[7]<-"ClassYes"
+display
+
+##need ROCR package to produce ROC curve
+library(ROCR)
+
+##produce the numbers associated with classification table
+rates<-ROCR::prediction(preds, test$action_taken_name)
+
+##store the true positive and false postive rates
+roc_result<-ROCR::performance(rates,measure="tpr", x.measure="fpr")
+
+##plot ROC curve and overlay the diagonal line for random guessing
+plot(roc_result, main="ROC Curve")
+lines(x = c(0,1), y = c(0,1), col="red")
+
+##compute the AUC
+auc<-ROCR::performance(rates, measure = "auc")
+auc@y.values
+```
+
+Ideal Threshold = 0.55 
+overall accuracy: 0.5983
+sensitivity: 0.642
+specificity: 0.5391
+FPR: 0.4609
+FNR: 0.358
+
+
+# Answer to question: Are white female applicants more likely to be approved than black female applicants and asian female applicants in the recovery period?
+
+We get stat. significant intercepts for app_raceAsian(0.7976) and app_raceWhite(0.8091) with the refernce class being Black. This means that the estimated odds of loan approval for asian females is exp(0.7976) = 2.22 times the estimated odds of approval for black females, given other factors affecting approval are held constant. Moreover, the estimated odds of loan approval for white females is exp(0.8091) = 2.24 times the estimated odds of approval for black females given other factors are held constant. This result is in alignment with the fact that black applicants are lesser likely to be approved than asians and white applicants which was expected given the literature review.
+
+# Answer to question: Are female residents of CA more likely to be approved for a mortgage than VA residents in the recovery period?
+
+We get a statistically insignifant result (although p value is very close to 5% at 0.0629) saying that the estimated odds of loan approval for female VA residents is exp(-7.232) = 0.0007 times the estimated odds of approval for female CA residents, given other factors are held constant. This is insignificant result, showing that state doesn't play a huge role in determining approval for female applicants in the recovery period.
+
+## Now doing the same for the recession period also
+
+## Subsetting for females and recession
+```{r}
+# Step 1: Subsetting the data
+HMDA_female_Recession <- HMDA %>%
+  filter(period == "Recession" & applicant_sex_name == "Female")
+```
+
+
+```{r}
+#Step 2 - additional EDA for subsetted data of females and recession
+
+#EDA - for female applicants and the Recession period
+#1) summary table
+summary(HMDA_female_Recession)
+# action_taken_name is a balanced data set with #Loan denied = 4,193 and #Loan originated = 3,020
+
+## exploring the relation for interactions
+
+#i) interaction between applicant_income_000s and property_type_name
+ggplot(HMDA_female_Recession, aes(x = property_type_name, y = applicant_income_000s, fill = action_taken_name)) +
+  geom_violin(scale = "width", trim = FALSE) +
+  labs(title = "Violin Plot of Applicant Income by Property Type and Action Taken",
+       x = "Property Type",
+       y = "Applicant Income",
+       fill = "Action Taken") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Loan originated" = "blue", "Loan denied" = "red"))
+
+##ii) interaction between applicant_income_000s and state_abbr
+ggplot(HMDA_female_Recession, aes(x = state_abbr, y = applicant_income_000s, fill = action_taken_name)) +
+  geom_violin(scale = "width", trim = FALSE) +
+  labs(title = "Violin Plot of Applicant Income by State and Action Taken",
+       x = "Property Type",
+       y = "Applicant Income",
+       fill = "Action Taken") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Loan originated" = "blue", "Loan denied" = "red"))
+
+##iii) interaction between applicant_income_000s and loan_purpose_name
+ggplot(HMDA_female_Recession, aes(x = loan_purpose_name, y = applicant_income_000s, fill = action_taken_name)) +
+  geom_violin(scale = "width", trim = FALSE) +
+  labs(title = "Violin Plot of Applicant Income by Loan Purpose and Action Taken",
+       x = "Property Type",
+       y = "Applicant Income",
+       fill = "Action Taken") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Loan originated" = "blue", "Loan denied" = "red"))
+
+##iv) interaction between per capita GDP and CPI
+ggplot(HMDA_female_Recession, aes(x = Per_Cap_GDP, y = CPI, color = action_taken_name)) +
+  geom_smooth(method = "lm") +
+  labs(title = "Scatter Plot of Per Capita GDP vs. CPI",
+       x = "Per Capita GDP",
+       y = "CPI",
+       color = "Action Taken") +
+  theme_minimal()
+
+#4) exploring the relations between categorical variables
+# 1) state_abbr and action_taken_name
+table_result1 <- table(HMDA_female_Recession$state_abbr, HMDA_female_Recession$action_taken_name)
+print(table_result1)
+
+# 2) loan_type_name and action_taken_name
+table_result2 <- table(HMDA_female_Recession$loan_type_name, HMDA_female_Recession$action_taken_name)
+print(table_result2)
+
+# 3) property_type_name and action_taken_name
+table_result3 <- table(HMDA_female_Recession$property_type_name, HMDA_female_Recession$action_taken_name)
+print(table_result3)
+
+# 4) loan_purpose_name and action_taken_name
+table_result4 <- table(HMDA_female_Recession$loan_purpose_name, HMDA_female_Recession$action_taken_name)
+print(table_result4)
+
+# 5) app_race and action_taken_name
+table_result5 <- table(HMDA_female_Recession$app_race, HMDA_female_Recession$action_taken_name)
+print(table_result5)
+```
+
+```{r}
+# Step 3: Logistic Regression
+
+# Having Black as the reference class
+HMDA_female_Recession$app_race <- relevel(HMDA_female_Recession$app_race, ref = "Black")
+
+# Fit a logistic regression model with "action_taken_name" as the response variable
+model <- glm(action_taken_name ~ state_abbr + loan_type_name + property_type_name +
+             loan_purpose_name + applicant_income_000s + app_race + CPI + unemployment_rate + Per_Cap_GDP  + applicant_income_000s*property_type_name + applicant_income_000s*state_abbr + applicant_income_000s * loan_purpose_name + Per_Cap_GDP * CPI, data = HMDA_female_Recession, family = binomial)
+
+# Step 4: Hypothesis Testing
+# Get a summary of the model to check p-values
+summary(model)
+```
+
+# Evaluating Logistic Regression for HMDA_female_Recession
+```{r}
+##set seed so results are reproducible
+set.seed(4996)
+
+##evenly split data into train and test sets
+sample.data<-sample.int(nrow(HMDA_female_Recession), floor(.50*nrow(HMDA_female_Recession)), replace = F)
+train<-HMDA_female_Recession[sample.data, ]
+test<-HMDA_female_Recession[-sample.data, ]
+
+##fit logistic regression using training data
+model <- glm(action_taken_name ~ state_abbr + loan_type_name + property_type_name +
+             loan_purpose_name + applicant_income_000s + app_race + CPI + unemployment_rate + Per_Cap_GDP  + applicant_income_000s*property_type_name + applicant_income_000s*state_abbr + applicant_income_000s * loan_purpose_name + Per_Cap_GDP * CPI, data = train, family = binomial)
+
+summary(model)
+
+##predicted probabilities for test data based on training data
+preds<-predict(model,newdata=test, type="response")
+
+
+##confusion matrix when threshold is 0.5. True values in the rows. 
+table(test$action_taken_name,preds > 0.5)
+
+##confusion matrix when threshold is 0.4. True values in the rows. 
+table(test$action_taken_name,preds > 0.4)
+
+##confusion matrix when threshold is 0.35. True values in the rows. 
+table(test$action_taken_name,preds > 0.35)
+
+##confusion matrix when threshold is 0.35. True values in the rows. 
+table(test$action_taken_name,preds > 0.37)
+
+
+##see the predicted probabilities for the test data and their classification based on threshold of 0.5
+display<-test[,c(1,3,4,5,7,10,12,13,14,15)]
+display<-cbind(display,preds,preds>0.37)
+names(display)[7]<-"ClassYes"
+display
+
+##need ROCR package to produce ROC curve
+library(ROCR)
+
+##produce the numbers associated with classification table
+rates<-ROCR::prediction(preds, test$action_taken_name)
+
+##store the true positive and false postive rates
+roc_result<-ROCR::performance(rates,measure="tpr", x.measure="fpr")
+
+##plot ROC curve and overlay the diagonal line for random guessing
+plot(roc_result, main="ROC Curve")
+lines(x = c(0,1), y = c(0,1), col="red")
+
+##compute the AUC
+auc<-ROCR::performance(rates, measure = "auc")
+auc@y.values
+```
+
+Ideal Threshold: 0.37
+overall accuracy: 0.6013
+sensitivity: 0.6585
+specificity: 0.5621
+FPR: 0.4379
+FNR: 0.3415
+
+# Answer to question: Are white female applicants more likely to be approved than black female applicants and asian female applicants in the recession period?
+
+We get stat. significant intercepts for app_raseAsian(0.9651) and app_raceWhite(0.7591) with the reference class being Black. This means that the estimated odds of loan approval for asian females is exp(0.9651) = 2.625  times the estimated odds of approval for black females, given other factors affecting approval are held constant. Moreover, the estimated odds of loan approval for white females is exp(0.7591) = 2.136 times the estimated odds of approval for black females given other factors are held constant. This result is in alignment with the fact that during recession, black female applicants are still less likely to be approved than white females and asian females. However, the racial gap between black females and white females decreases which is alignment with the fact that black applicants had greater accessibility to home loans; however, they had access to subprime mortgages which make them financially more vulnerable. However, I don't know why the racial gap has increased between asian and black females. In fact, asian females are the most likely to be approved for a mortgage.
+
+# Answer to question: Are female residents of CA more likely to be approved for a mortgage than VA residents in the recession period?
+
+We get a statistically signifant result saying that the estimated odds of loan approval for female VA residents is exp(1.128) = 3.09 times the estimated odds of approval for female CA residents, given other factors are held constant. This is a very significant result which is in alignment with the literature review saying that the mortgage market in CA was one of the worst affected by the great recession. This implies that a recession increases the gender gap in mortgage approvals.
+
+# Conclusion
+
+# Q1) Are white female applicants more likely to be approved than black female applicants and asian female applicants in the recession period? What about the recovery period?
+
+During the recession period,
+
+We get stat. significant intercepts for app_raseAsian(0.9651) and app_raceWhite(0.7591) with the reference class being Black. This means that the estimated odds of loan approval for asian females is exp(0.9651) = 2.625  times the estimated odds of approval for black females, given other factors affecting approval are held constant. Moreover, the estimated odds of loan approval for white females is exp(0.7591) = 2.136 times the estimated odds of approval for black females given other factors are held constant. This result is in alignment with the fact that during recession, black female applicants are still less likely to be approved than white females and asian females. However, the racial gap between black females and white females decreases which is alignment with the fact that black applicants had greater accessibility to home loans; however, they had access to subprime mortgages which make then financially more vulnerable. However, I don't know why the racial gap has increased between asian and black females. In fact, asian females are the most likely to be approved for a mortgage.
+
+During the recovery period,
+
+We get stat. significant intercepts for app_raceAsian(0.7976) and app_raceWhite(0.8091) with the refernce class being Black. This means that the estimated odds of loan approval for asian females is exp(0.7976) = 2.22 times the estimated odds of approval for black females, given other factors affecting approval are held constant. Moreover, the estimated odds of loan approval for white females is exp(0.8091) = 2.24 times the estimated odds of approval for black females given other factors are held constant. This result is in alignment with the fact that black applicants are lesser likely to be approved than asians and white applicants which was expected given the literature review.
+
+# Q2) Are female residents of CA more likely to be approved for a mortgage than female VA residents in the receccion period? What about the recovery period?
+
+During the recession period,
+
+We get a statistically significant result saying that the estimated odds of loan approval for female VA residents is exp(1.128) = 3.09 times the estimated odds of approval for female CA residents, given other factors are held constant. This is a very significant result which is in alignment with the literature review saying that the mortgage market in CA was one of the worst affected by the great recession. This implies that a recession increases the gender gap in mortgage approvals.
+
+During the recovery period,
+
+We get a statistically insignificant result (although p value is very close to 5% at 0.0629) saying that the estimated odds of loan approval for female VA residents is exp(-7.232) = 0.0007 times the estimated odds of approval for female CA residents, given other factors are held constant. This is insignificant result, showing that state doesn't play a huge role in determining approval for female applicants in the recovery period.
