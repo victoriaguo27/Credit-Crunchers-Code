@@ -1,0 +1,326 @@
+---
+title: "HMDA_analysis_modified"
+author: "Sophie Reale"
+date: "2024-04-03"
+output: pdf_document
+---
+
+# Load Packages
+```{r}
+library(ggplot2)
+library(dplyr)
+library(rvest)
+library(ipred)
+library(tree)
+library(randomForest)
+library(glmnet)
+```
+
+# Load in HMDA data - it has already been modified with necessary changes
+```{r}
+# Load in HMDA Data
+HMDA<-read.csv("/Users/sophiereale/Desktop/DesktopMacBook/Capstone/final_data_HMDA2.csv")
+
+# Converting to factor variables
+HMDA$state_abbr <- factor(HMDA$state_abbr)
+HMDA$loan_type_name <- factor(HMDA$loan_type_name)
+HMDA$property_type_name <- factor(HMDA$property_type_name)
+HMDA$loan_purpose_name <- factor(HMDA$loan_purpose_name)
+HMDA$action_taken_name <- factor(HMDA$action_taken_name)
+HMDA$applicant_race_name_1 <- factor(HMDA$applicant_race_name_1)
+HMDA$applicant_sex_name <- factor(HMDA$applicant_sex_name)
+HMDA$period <- factor(HMDA$period)
+
+# Remove unnecessary columns (year, x value, extra race column)
+HMDA <- HMDA[, -c(1,3,10)]
+```
+
+
+
+# CLASSIFICATION TREES
+
+
+# PART ONE: ENTIRE DATA SET
+
+# Split into test and train data
+```{r}
+set.seed(100)
+
+## Evenly split data into train and test sets
+sample.HMDA <- sample.int(nrow(HMDA), floor(.50*nrow(HMDA)), replace = F)
+trainHMDA <- HMDA[sample.HMDA, ]
+testHMDA <- HMDA[-sample.HMDA, ]
+
+## Store the response variable for test data
+y.test<-testHMDA[,"action_taken_name"]
+```
+
+
+# Recursive binary splitting
+```{r}
+## Use recursive binary splitting on training data
+tree.class.train <- tree::tree(action_taken_name ~ ., data=trainHMDA)
+summary(tree.class.train)
+
+## Plot tree
+plot(tree.class.train)
+text(tree.class.train, cex=0.6, pretty=0)
+
+## Find predicted classes for test data
+tree.pred.test <- predict(tree.class.train, newdata=testHMDA, type="class") 
+
+## Find predicted probabilities for test data
+pred.probs<-predict(tree.class.train, newdata=testHMDA)
+
+## Confusion matrix for test data
+conf <- table(y.test, tree.pred.test) ##actual classes in rows, predicted classes in columns
+conf
+```
+
+# Pruning
+```{r}
+## Prune tree
+cv.class <- tree::cv.tree(tree.class.train, K=10, FUN=prune.misclass) 
+cv.class
+
+## Size of tree chosen by pruning
+trees.num.class<-cv.class$size[which.min(cv.class$dev)]
+trees.num.class 
+
+## Pruning summary
+prune.class <- tree::prune.misclass(tree.class.train, best=trees.num.class)
+summary(prune.class)
+```
+
+# Random forests
+```{r}
+## Random Forest
+rf.class<-randomForest::randomForest(action_taken_name ~ ., data=trainHMDA, mtry=3,importance=TRUE)
+rf.class
+
+## Plots for importance
+importance(rf.class)
+varImpPlot(rf.class)
+
+## Test accuracy with Random Forest                  
+pred.rf<-predict(rf.class, newdata=testHMDA)
+rf <- table(y.test, pred.rf)
+rf
+```
+Misclassification rates:
+- Recursive Binary Splitting: 0.3813
+- Pruning: 0.3813
+- RF: 0.3514663
+
+
+
+# PART TWO: RECOVERY PERIOD ONLY
+
+# Isolate recovery period
+```{r}
+HMDA_Recovery <- HMDA %>% filter(period == "Recovery")
+```
+
+
+# Split into test and train data
+```{r}
+set.seed(100)
+
+## Evenly split data into train and test sets
+sample.HMDA <- sample.int(nrow(HMDA_Recovery), floor(.50*nrow(HMDA_Recovery)), replace = F)
+trainHMDA <- HMDA[sample.HMDA, ]
+testHMDA <- HMDA[-sample.HMDA, ]
+
+## Store the response variable for test data
+y.test<-testHMDA[,"action_taken_name"]
+```
+
+
+# Recursive binary splitting
+```{r}
+## Use recursive binary splitting on training data
+tree.class.train <- tree::tree(action_taken_name ~ ., data=trainHMDA)
+summary(tree.class.train)
+
+## Plot tree
+plot(tree.class.train)
+text(tree.class.train, cex=0.6, pretty=0)
+
+## Find predicted classes for test data
+tree.pred.test <- predict(tree.class.train, newdata=testHMDA, type="class") 
+
+## Find predicted probabilities for test data
+pred.probs<-predict(tree.class.train, newdata=testHMDA)
+
+## Confusion matrix for test data
+conf <- table(y.test, tree.pred.test) ##actual classes in rows, predicted classes in columns
+conf
+
+##test error
+rbs_acc_0.5 <- mean(tree.pred.test==y.test)
+rbs_error_0.5 = 1 - rbs_acc_0.5
+rbs_error_0.5
+
+##false positive rate
+rbs_fpr_0.5 <- conf[1,2] / (conf[1,1] + conf[1,2])
+rbs_fpr_0.5
+
+##false negative rate
+rbs_fnr_0.5 <- conf[2,1] / (conf[2,1] + conf[2,2])
+rbs_fnr_0.5
+```
+
+# Pruning
+```{r}
+## Prune tree
+cv.class <- tree::cv.tree(tree.class.train, K=10, FUN=prune.misclass) 
+cv.class
+
+## Size of tree chosen by pruning
+trees.num.class<-cv.class$size[which.min(cv.class$dev)]
+trees.num.class 
+
+## Pruning summary
+prune.class <- tree::prune.misclass(tree.class.train, best=trees.num.class)
+summary(prune.class)
+```
+
+# Random forests
+```{r}
+## Random Forest
+rf.class<-randomForest::randomForest(action_taken_name ~ ., data=trainHMDA, mtry=3,importance=TRUE)
+rf.class
+
+## Plots for importance
+importance(rf.class)
+varImpPlot(rf.class)
+
+## Test accuracy with Random Forest                  
+pred.rf<-predict(rf.class, newdata=testHMDA)
+rf <- table(y.test, pred.rf)
+rf
+
+##test error
+rf_acc_0.5 <- (rf[1,1] + rf[2,2]) / (nrow(testHMDA))
+rf_error_0.5 <- 1 - rf_acc_0.5
+rf_error_0.5 
+
+##false positive rate
+rf_fpr_0.5 <- rf[1,2] / (rf[1,1] + rf[1,2])
+rf_fpr_0.5
+
+##false negative rate
+rf_fnr_0.5 <- rf[2,1] / (rf[2,1] + rf[2,2])
+rf_fnr_0.5
+```
+
+
+
+# PART THREE: RECESSION PERIOD ONLY
+
+# Isolate recession period
+```{r}
+HMDA_Recession <- HMDA %>% filter(period == "Recession")
+```
+
+
+# Split into test and train data
+```{r}
+set.seed(100)
+
+## Evenly split data into train and test sets
+sample.HMDA <- sample.int(nrow(HMDA_Recession), floor(.50*nrow(HMDA_Recession)), replace = F)
+trainHMDA <- HMDA[sample.HMDA, ]
+testHMDA <- HMDA[-sample.HMDA, ]
+
+## Store the response variable for test data
+y.test<-testHMDA[,"action_taken_name"]
+```
+
+
+# Recursive binary splitting
+```{r}
+## Use recursive binary splitting on training data
+tree.class.train <- tree::tree(action_taken_name ~ ., data=trainHMDA)
+summary(tree.class.train)
+
+## Plot tree
+plot(tree.class.train)
+text(tree.class.train, cex=0.6, pretty=0)
+
+## Find predicted classes for test data
+tree.pred.test <- predict(tree.class.train, newdata=testHMDA, type="class") 
+
+## Find predicted probabilities for test data
+pred.probs<-predict(tree.class.train, newdata=testHMDA)
+
+## Confusion matrix for test data
+conf <- table(y.test, tree.pred.test) ##actual classes in rows, predicted classes in columns
+conf
+
+##test error
+rbs_acc_0.5 <- mean(tree.pred.test==y.test)
+rbs_error_0.5 = 1 - rbs_acc_0.5
+rbs_error_0.5
+
+##false positive rate
+rbs_fpr_0.5 <- conf[1,2] / (conf[1,1] + conf[1,2])
+rbs_fpr_0.5
+
+##false negative rate
+rbs_fnr_0.5 <- conf[2,1] / (conf[2,1] + conf[2,2])
+rbs_fnr_0.5
+```
+
+# Pruning
+```{r}
+## Prune tree
+cv.class <- tree::cv.tree(tree.class.train, K=10, FUN=prune.misclass) 
+cv.class
+
+## Size of tree chosen by pruning
+trees.num.class<-cv.class$size[which.min(cv.class$dev)]
+trees.num.class 
+
+## Pruning summary
+prune.class <- tree::prune.misclass(tree.class.train, best=trees.num.class)
+summary(prune.class)
+```
+
+# Random forests
+```{r}
+## Random Forest
+rf.class<-randomForest::randomForest(action_taken_name ~ ., data=trainHMDA, mtry=3,importance=TRUE)
+rf.class
+
+## Plots for importance
+importance(rf.class)
+varImpPlot(rf.class)
+
+## Test accuracy with Random Forest                  
+pred.rf<-predict(rf.class, newdata=testHMDA)
+rf <- table(y.test, pred.rf)
+rf
+
+##test error
+rf_acc_0.5 <- (rf[1,1] + rf[2,2]) / (nrow(testHMDA))
+rf_error_0.5 <- 1 - rf_acc_0.5
+rf_error_0.5 
+
+##false positive rate
+rf_fpr_0.5 <- rf[1,2] / (rf[1,1] + rf[1,2])
+rf_fpr_0.5
+
+##false negative rate
+rf_fnr_0.5 <- rf[2,1] / (rf[2,1] + rf[2,2])
+rf_fnr_0.5
+```
+
+
+
+
+
+
+
+
+
